@@ -52,7 +52,7 @@ jobs:
       - name: 编译 Shared Lib (NDK 22)
         run: |
           export ANDROID_NDK=$ANDROID_NDK_22  # 使用刚才设置的环境变量
-          export ANDROID_API=24
+          export ANDROID_API=36
           cd onnxruntime
           ./build.sh --config Release \
             --android \
