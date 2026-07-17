@@ -1,4 +1,4 @@
-name: Build ONNX Runtime (NDK25, API 34)
+name: Build ONNX Runtime (NDK25, API 34 - QNN Shared)
 
 on:
   workflow_dispatch:
@@ -31,46 +31,47 @@ jobs:
           unzip -q commandlinetools-linux-11076708_latest.zip -d $ANDROID_SDK_ROOT/cmdline-tools
           mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
           
-          echo "正在下载 NDK 25，请耐心等待..."
+          echo "正在下载 NDK 25..."
           $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install "ndk;25.2.9519653" --channel=0
           
           echo "ANDROID_NDK_25=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> $GITHUB_ENV
 
-      - name: 下载 QNN SDK (Google Drive)
+      - name: 下载 QNN SDK
         run: |
           gdown 1mWBqYnpVw5coBF7x5ZTFxf93z0ERwE8H -O qnn-sdk.zip
           unzip qnn-sdk.zip -d $GITHUB_WORKSPACE/qnn-sdk
 
-      # ============== 编译前检查与路径修正 ==============
       - name: 检查 QNN SDK 路径
         run: |
-          echo "以下目录将被用作 --qnn_home："
+          echo "QNN SDK 路径："
           ls -d $GITHUB_WORKSPACE/qnn-sdk/qairt/2.48.0.260626
 
-      # ============== 统一用 NDK 25 编译动态库与二进制 ==============
+      # ============== 核心编译步骤（已优化） ==============
       - name: 编译 Shared Lib (NDK 25, API 34)
         run: |
-          # 注意：这里不再用 --android_ndk_path 传参数，直接使用环境变量 ANDROID_NDK，防止工具链路径解析失败
           export ANDROID_NDK=$ANDROID_NDK_25
           
-          # 关键修正：qnn_home 必须指向解压后包含 include 和 lib 的最终文件夹
           ./build.sh --config Release \
             --android \
             --android_abi arm64-v8a \
             --android_api 34 \
-            --use_qnn static_lib \
+            --use_qnn \                      # 去掉 static_lib
             --qnn_home $GITHUB_WORKSPACE/qnn-sdk/qairt/2.48.0.260626 \
             --build_shared_lib \
             --parallel \
-            --cmake_extra_defines="CMAKE_VERBOSE_MAKEFILE=ON"
-          
+            --skip_tests \
+            --cmake_extra_defines="CMAKE_VERBOSE_MAKEFILE=ON" \
+            --cmake_extra_defines="onnxruntime_ENABLE_CPUINFO=OFF" \
+            --cmake_extra_defines="onnxruntime_ENABLE_LTO=OFF"
+
           mv build/Android/Release $GITHUB_WORKSPACE/Release_Shared
 
       # ============== 上传产物 ==============
-      - name: 上传 NDK 25 动态库产物 (.so 与 onnxruntime_perf_test)
+      - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: onnxruntime-shared-ndk25-api34-qnn
+          name: onnxruntime-shared-ndk25-api34-qnn-fixed
           path: |
             Release_Shared/libonnxruntime*.so
             Release_Shared/onnxruntime_perf_test
+            Release_Shared/*.so
