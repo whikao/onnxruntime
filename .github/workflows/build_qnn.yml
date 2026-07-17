@@ -5,12 +5,12 @@ on:
 
 jobs:
   build-android-qnn:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 配置 Java 环境 (sdkmanager 需要)
+      - name: 配置 Java 环境
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
@@ -20,38 +20,38 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y cmake ninja-build python3-pip
-          pip install gdown
+          pip install gdown flatbuffers
 
-      # ============== 使用官方 sdkmanager 安装指定 NDK ==============
       - name: 设置 Android SDK 并安装 NDK 22 和 NDK 28
         run: |
           mkdir -p $GITHUB_WORKSPACE/android-sdk
           export ANDROID_SDK_ROOT=$GITHUB_WORKSPACE/android-sdk
           
-          # 下载 commandlinetools
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           unzip -q commandlinetools-linux-11076708_latest.zip -d $ANDROID_SDK_ROOT/cmdline-tools
           mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
           
-          # 分步安装 NDK
           echo "正在下载 NDK 22 和 NDK 28，请耐心等待..."
           $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install "ndk;22.1.7171670" --channel=0
           $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install "ndk;28.0.12674087" --channel=0
           
-          # 写入环境变量
           echo "ANDROID_NDK_22=$ANDROID_SDK_ROOT/ndk/22.1.7171670" >> $GITHUB_ENV
           echo "ANDROID_NDK_28=$ANDROID_SDK_ROOT/ndk/28.0.12674087" >> $GITHUB_ENV
 
-      # ============== 下载 QNN SDK ==============
       - name: 下载 QNN SDK (Google Drive)
         run: |
           gdown 1mWBqYnpVw5coBF7x5ZTFxf93z0ERwE8H -O qnn-sdk.zip
           unzip qnn-sdk.zip -d $GITHUB_WORKSPACE/qnn-sdk
+          
+          # 这一步非常关键！打印解压后的目录，方便你确认真正的 qnn_home 路径
+          echo "--------------- 解压后的 QNN SDK 目录结构 ---------------"
+          ls -R $GITHUB_WORKSPACE/qnn-sdk
+          echo "--------------------------------------------------------"
 
       # ============== 第 1 步：用 NDK 22 编译动态库 (.so) ==============
       - name: 编译 Shared Lib (NDK 22, API 24)
         run: |
-          export ANDROID_NDK=$ANDROID_NDK_22
+          # 显式传入 --android_ndk_path，避免用错 GitHub 自带的默认 NDK
           ./build.sh --config Release \
             --android \
             --android_abi arm64-v8a \
@@ -60,15 +60,16 @@ jobs:
             --qnn_home $GITHUB_WORKSPACE/qnn-sdk \
             --build_shared_lib \
             --build \
-            --parallel
-          # 保存产物
+            --parallel \
+            --verbose \
+            --cmake_extra_defines "CMAKE_VERBOSE_MAKEFILE=ON" \
+            --android_ndk_path $ANDROID_NDK_22
           mv build/Android/Release $GITHUB_WORKSPACE/Release_Shared
 
       # ============== 第 2 步：用 NDK 28 编译静态库 (.a) ==============
       - name: 编译 Static Lib (NDK 28, API 36)
         run: |
-          export ANDROID_NDK=$ANDROID_NDK_28
-          # 移除 --build_shared_lib，专门生成静态 .a 供后续打包
+          # 显式传入 --android_ndk_path，避免用错 GitHub 自带的默认 NDK
           ./build.sh --config Release \
             --android \
             --android_abi arm64-v8a \
@@ -76,11 +77,12 @@ jobs:
             --use_qnn static_lib \
             --qnn_home $GITHUB_WORKSPACE/qnn-sdk \
             --build \
-            --parallel
-          # 保存产物
+            --parallel \
+            --verbose \
+            --cmake_extra_defines "CMAKE_VERBOSE_MAKEFILE=ON" \
+            --android_ndk_path $ANDROID_NDK_28
           mv build/Android/Release $GITHUB_WORKSPACE/Release_Static
 
-      # ============== 上传两个版本的产物 ==============
       - name: 上传 NDK 22 动态库产物 (.so)
         uses: actions/upload-artifact@v4
         with:
