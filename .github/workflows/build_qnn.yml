@@ -1,4 +1,4 @@
-name: Build ONNX Runtime QNN Shared Libs (Exclude System Dependencies)
+name: Build ONNX Runtime (Shared NDK22, Static NDK28)
 
 on:
   workflow_dispatch:
@@ -10,38 +10,70 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 安装编译工具及 Python 依赖
+      - name: 安装编译环境与 Python 依赖
         run: |
           sudo apt update
           sudo apt install -y cmake ninja-build python3-pip
           pip install gdown
 
-      - name: 下载 NDK r23b
+      - name: 同时下载 NDK 22 和 NDK 28
         run: |
-          wget https://dl.google.com/android/repository/android-ndk-r23b-linux.zip
-          unzip android-ndk-r23b-linux.zip
-          echo "ANDROID_NDK=$GITHUB_WORKSPACE/android-ndk-r23b" >> $GITHUB_ENV
+          wget https://dl.google.com/android/repository/android-ndk-r22b-linux.zip
+          unzip android-ndk-r22b-linux.zip
+          wget https://dl.google.com/android/repository/android-ndk-r28-linux.zip
+          unzip android-ndk-r28-linux.zip
 
-      - name: 下载 QNN SDK
+      - name: 下载 QNN SDK (Google Drive)
         run: |
           gdown 1mWBqYnpVw5coBF7x5ZTFxf93z0ERwE8H -O qnn-sdk.zip
           unzip qnn-sdk.zip -d $GITHUB_WORKSPACE/qnn-sdk
-          echo "QNN_HOME=$GITHUB_WORKSPACE/qnn-sdk" >> $GITHUB_ENV
 
-      - name: 编译 ONNX Runtime 及 QNN Provider 动态库
+      # ============== 第 1 步：用 NDK 22 编译动态库 (.so) ==============
+      - name: 编译 Shared Lib (NDK 22)
         run: |
+          export ANDROID_NDK=$GITHUB_WORKSPACE/android-ndk-r22b
+          export ANDROID_API=24
+          cd onnxruntime
           ./build.sh --config Release \
             --android \
             --android_abi arm64-v8a \
-            --android_api 36 \
+            --android_api $ANDROID_API \
             --use_qnn shared_lib \
-            --qnn_home $QNN_HOME \
+            --qnn_home $GITHUB_WORKSPACE/qnn-sdk \
             --build_shared_lib \
             --build \
             --parallel
+          # 保存动态库产物，避免被覆盖
+          mv build/Android/Release $GITHUB_WORKSPACE/Release_Shared
 
-      - name: 上传编译产物
+      # ============== 第 2 步：用 NDK 28 编译静态库 (.a) ==============
+      - name: 编译 Static Lib (NDK 28)
+        run: |
+          export ANDROID_NDK=$GITHUB_WORKSPACE/android-ndk-r28
+          export ANDROID_API=36  # NDK 28 完美支持 API 36
+          cd onnxruntime
+          # 注意：--use_qnn static_lib 会把 QNN 后端直接打包进 .a
+          ./build.sh --config Release \
+            --android \
+            --android_abi arm64-v8a \
+            --android_api $ANDROID_API \
+            --use_qnn static_lib \
+            --qnn_home $GITHUB_WORKSPACE/qnn-sdk \
+            --build_shared_lib \
+            --build \
+            --parallel
+          # 保存静态库产物
+          mv build/Android/Release $GITHUB_WORKSPACE/Release_Static
+
+      # ============== 上传两个版本的产物 ==============
+      - name: 上传 NDK 22 动态库产物 (.so)
         uses: actions/upload-artifact@v4
         with:
-          name: onnxruntime-qnn-core-libs-arm64
-          path: onnxruntime/build/Android/Release/libonnxruntime*.so
+          name: onnxruntime-shared-ndk22-qnn
+          path: Release_Shared/libonnxruntime*.so
+
+      - name: 上传 NDK 28 静态库产物 (.a)
+        uses: actions/upload-artifact@v4
+        with:
+          name: onnxruntime-static-ndk28-qnn
+          path: Release_Static/lib*.a
