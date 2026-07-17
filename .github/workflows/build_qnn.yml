@@ -42,7 +42,6 @@ jobs:
         run: |
           gdown 1mWBqYnpVw5coBF7x5ZTFxf93z0ERwE8H -O qnn-sdk.zip
           unzip qnn-sdk.zip -d $GITHUB_WORKSPACE/qnn-sdk
-          
           echo "--------------- 解压后的 QNN SDK 目录结构 ---------------"
           ls -R $GITHUB_WORKSPACE/qnn-sdk
           echo "--------------------------------------------------------"
@@ -50,6 +49,7 @@ jobs:
       # ============== 第 1 步：用 NDK 22 编译动态库 (.so) ==============
       - name: 编译 Shared Lib (NDK 22, API 24)
         run: |
+          # 注意：这里删除了 --build，让它自动先执行 --update 再执行编译
           ./build.sh --config Release \
             --android \
             --android_abi arm64-v8a \
@@ -57,7 +57,6 @@ jobs:
             --use_qnn shared_lib \
             --qnn_home $GITHUB_WORKSPACE/qnn-sdk \
             --build_shared_lib \
-            --build \
             --parallel \
             --cmake_extra_defines="CMAKE_VERBOSE_MAKEFILE=ON" \
             --android_ndk_path $ANDROID_NDK_22
@@ -66,13 +65,13 @@ jobs:
       # ============== 第 2 步：用 NDK 28 编译静态库 (.a) ==============
       - name: 编译 Static Lib (NDK 28, API 36)
         run: |
+          # 同样删除了 --build
           ./build.sh --config Release \
             --android \
             --android_abi arm64-v8a \
             --android_api 36 \
             --use_qnn static_lib \
             --qnn_home $GITHUB_WORKSPACE/qnn-sdk \
-            --build \
             --parallel \
             --cmake_extra_defines="CMAKE_VERBOSE_MAKEFILE=ON" \
             --android_ndk_path $ANDROID_NDK_28
