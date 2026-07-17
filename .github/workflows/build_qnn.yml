@@ -10,18 +10,38 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
+      # 使用 sdkmanager 需要 Java 环境
+      - name: 配置 Java 环境
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
       - name: 安装编译环境与 Python 依赖
         run: |
           sudo apt update
           sudo apt install -y cmake ninja-build python3-pip
           pip install gdown
 
-      - name: 同时下载 NDK 22 和 NDK 28
+      # ============== 用官方 SDK 管理器安装 NDK 22 和 28 ==============
+      - name: 设置 Android SDK 并安装指定 NDK
         run: |
-          wget https://dl.google.com/android/repository/android-ndk-r22b-linux.zip
-          unzip android-ndk-r22b-linux.zip
-          wget https://dl.google.com/android/repository/android-ndk-r28-linux.zip
-          unzip android-ndk-r28-linux.zip
+          mkdir -p $GITHUB_WORKSPACE/android-sdk
+          export ANDROID_SDK_ROOT=$GITHUB_WORKSPACE/android-sdk
+          
+          # 1. 下载最新的 commandlinetools (包含 sdkmanager)
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q commandlinetools-linux-11076708_latest.zip -d $ANDROID_SDK_ROOT/cmdline-tools
+          mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
+          
+          # 2. 使用 sdkmanager 安装对应的 NDK 版本 (r22b 对应 22.1.7171670，r28 对应 28.0.11718014)
+          echo "正在下载 NDK 22 和 NDK 28，请耐心等待..."
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install "ndk;22.1.7171670" "ndk;28.0.11718014"
+          
+          # 3. 把 NDK 路径写入环境变量供后续使用
+          echo "ANDROID_NDK_22=$ANDROID_SDK_ROOT/ndk/22.1.7171670" >> $GITHUB_ENV
+          echo "ANDROID_NDK_28=$ANDROID_SDK_ROOT/ndk/28.0.11718014" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
 
       - name: 下载 QNN SDK (Google Drive)
         run: |
@@ -31,7 +51,7 @@ jobs:
       # ============== 第 1 步：用 NDK 22 编译动态库 (.so) ==============
       - name: 编译 Shared Lib (NDK 22)
         run: |
-          export ANDROID_NDK=$GITHUB_WORKSPACE/android-ndk-r22b
+          export ANDROID_NDK=$ANDROID_NDK_22  # 使用刚才设置的环境变量
           export ANDROID_API=24
           cd onnxruntime
           ./build.sh --config Release \
@@ -43,16 +63,15 @@ jobs:
             --build_shared_lib \
             --build \
             --parallel
-          # 保存动态库产物，避免被覆盖
+          # 保存产物
           mv build/Android/Release $GITHUB_WORKSPACE/Release_Shared
 
       # ============== 第 2 步：用 NDK 28 编译静态库 (.a) ==============
       - name: 编译 Static Lib (NDK 28)
         run: |
-          export ANDROID_NDK=$GITHUB_WORKSPACE/android-ndk-r28
-          export ANDROID_API=36  # NDK 28 完美支持 API 36
+          export ANDROID_NDK=$ANDROID_NDK_28  # 使用刚才设置的环境变量
+          export ANDROID_API=36
           cd onnxruntime
-          # 注意：--use_qnn static_lib 会把 QNN 后端直接打包进 .a
           ./build.sh --config Release \
             --android \
             --android_abi arm64-v8a \
@@ -62,7 +81,7 @@ jobs:
             --build_shared_lib \
             --build \
             --parallel
-          # 保存静态库产物
+          # 保存产物
           mv build/Android/Release $GITHUB_WORKSPACE/Release_Static
 
       # ============== 上传两个版本的产物 ==============
