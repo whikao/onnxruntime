@@ -43,10 +43,11 @@ jobs:
           gdown 1mWBqYnpVw5coBF7x5ZTFxf93z0ERwE8H -O qnn-sdk.zip
           unzip qnn-sdk.zip -d $GITHUB_WORKSPACE/qnn-sdk
 
-      # ============== 第 1 步：用 NDK 22 编译动态库 (.so) 与二进制程序 ==============
+      # ============== 第 1 步：用 NDK 22 编译动态库 (.so) ==============
       - name: 编译 Shared Lib (NDK 22, API 24)
         run: |
-          # 关键：同时加上 --build 参数，确保生成 onnxruntime_perf_test 二进制程序
+          # 注意：这里删除了 --build，它会自动执行 CMake 配置和编译
+          # 同时生成 libonnxruntime.so 和 onnxruntime_perf_test
           ./build.sh --config Release \
             --android \
             --android_abi arm64-v8a \
@@ -54,7 +55,6 @@ jobs:
             --use_qnn static_lib \
             --qnn_home $GITHUB_WORKSPACE/qnn-sdk \
             --build_shared_lib \
-            --build \
             --parallel \
             --cmake_extra_defines="CMAKE_VERBOSE_MAKEFILE=ON" \
             --android_ndk_path $ANDROID_NDK_22
@@ -63,13 +63,13 @@ jobs:
       # ============== 第 2 步：用 NDK 28 编译静态库 (.a) ==============
       - name: 编译 Static Lib (NDK 28, API 36)
         run: |
+          # 同样删除 --build
           ./build.sh --config Release \
             --android \
             --android_abi arm64-v8a \
             --android_api 36 \
             --use_qnn static_lib \
             --qnn_home $GITHUB_WORKSPACE/qnn-sdk \
-            --build \
             --parallel \
             --cmake_extra_defines="CMAKE_VERBOSE_MAKEFILE=ON" \
             --android_ndk_path $ANDROID_NDK_28
