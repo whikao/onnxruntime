@@ -30,11 +30,10 @@ jobs:
 
       - name: 编译 ONNX Runtime 及 QNN Provider 动态库
         run: |
-          cd onnxruntime
           ./build.sh --config Release \
             --android \
             --android_abi arm64-v8a \
-            --android_api 24 \
+            --android_api 36 \
             --use_qnn shared_lib \
             --qnn_home $QNN_HOME \
             --build_shared_lib \
