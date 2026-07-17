@@ -41,30 +41,28 @@ jobs:
           gdown 1mWBqYnpVw5coBF7x5ZTFxf93z0ERwE8H -O qnn-sdk.zip
           unzip qnn-sdk.zip -d $GITHUB_WORKSPACE/qnn-sdk
 
-      # ============== 新增：打印解压后的路径 ==============
-      - name: 检查 QNN SDK 解压后的路径
+      # ============== 编译前检查与路径修正 ==============
+      - name: 检查 QNN SDK 路径
         run: |
-          echo "---------------------------------------"
-          echo "下面是解压后的 QNN SDK 结构，请找到包含 'include/QNN' 和 'lib' 的父级目录！"
-          echo "---------------------------------------"
-          find $GITHUB_WORKSPACE/qnn-sdk -maxdepth 3
-          echo "---------------------------------------"
+          echo "以下目录将被用作 --qnn_home："
+          ls -d $GITHUB_WORKSPACE/qnn-sdk/qairt/2.48.0.260626
 
-      # ============== 编译 ==============
+      # ============== 统一用 NDK 25 编译动态库与二进制 ==============
       - name: 编译 Shared Lib (NDK 25, API 34)
         run: |
-          # 注意：如果你的 qnn-sdk 里面还套了一层文件夹，比如 qnn-sdk/v2.25.0
-          # 请务必把 --qnn_home 的路径改为 qnn-sdk/v2.25.0
+          # 注意：这里不再用 --android_ndk_path 传参数，直接使用环境变量 ANDROID_NDK，防止工具链路径解析失败
+          export ANDROID_NDK=$ANDROID_NDK_25
+          
+          # 关键修正：qnn_home 必须指向解压后包含 include 和 lib 的最终文件夹
           ./build.sh --config Release \
             --android \
             --android_abi arm64-v8a \
             --android_api 34 \
             --use_qnn static_lib \
-            --qnn_home $GITHUB_WORKSPACE/qnn-sdk \
+            --qnn_home $GITHUB_WORKSPACE/qnn-sdk/qairt/2.48.0.260626 \
             --build_shared_lib \
             --parallel \
-            --cmake_extra_defines="CMAKE_VERBOSE_MAKEFILE=ON" \
-            --android_ndk_path $ANDROID_NDK_25
+            --cmake_extra_defines="CMAKE_VERBOSE_MAKEFILE=ON"
           
           mv build/Android/Release $GITHUB_WORKSPACE/Release_Shared
 
