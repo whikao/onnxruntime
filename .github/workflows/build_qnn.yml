@@ -41,11 +41,20 @@ jobs:
           gdown 1mWBqYnpVw5coBF7x5ZTFxf93z0ERwE8H -O qnn-sdk.zip
           unzip qnn-sdk.zip -d $GITHUB_WORKSPACE/qnn-sdk
 
-      # ============== 统一用 NDK 25 编译动态库与二进制 ==============
+      # ============== 新增：打印解压后的路径 ==============
+      - name: 检查 QNN SDK 解压后的路径
+        run: |
+          echo "---------------------------------------"
+          echo "下面是解压后的 QNN SDK 结构，请找到包含 'include/QNN' 和 'lib' 的父级目录！"
+          echo "---------------------------------------"
+          find $GITHUB_WORKSPACE/qnn-sdk -maxdepth 3
+          echo "---------------------------------------"
+
+      # ============== 编译 ==============
       - name: 编译 Shared Lib (NDK 25, API 34)
         run: |
-          # 注意：这里去掉了 --build，它会自动正确执行配置和编译
-          # NDK 25 的最高稳定 API 是 34。如果强制设 36 会编译失败。
+          # 注意：如果你的 qnn-sdk 里面还套了一层文件夹，比如 qnn-sdk/v2.25.0
+          # 请务必把 --qnn_home 的路径改为 qnn-sdk/v2.25.0
           ./build.sh --config Release \
             --android \
             --android_abi arm64-v8a \
@@ -56,6 +65,7 @@ jobs:
             --parallel \
             --cmake_extra_defines="CMAKE_VERBOSE_MAKEFILE=ON" \
             --android_ndk_path $ANDROID_NDK_25
+          
           mv build/Android/Release $GITHUB_WORKSPACE/Release_Shared
 
       # ============== 上传产物 ==============
