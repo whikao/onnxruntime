@@ -10,6 +10,18 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
+      - name: 打补丁: 布局偏好 NHWC -> NCHW (修 QDQ 编译被布局变换改废的 bug)
+        run: |
+          # 定位 GetPreferredLayout 的实现 (可能在 .cc 或 .h)
+          grep -rn "GetPreferredLayout" onnxruntime/core/providers/qnn/ || true
+          # 只把该函数里的 NHWC 返回值改成 NCHW, 文件里其他 NHWC 不碰
+          perl -0pi -e 's/(GetPreferredLayout\(\)[^}]*?)::NHWC/${1}::NCHW/s' \
+            onnxruntime/core/providers/qnn/qnn_execution_provider.cc \
+            onnxruntime/core/providers/qnn/qnn_execution_provider.h 2>/dev/null || true
+          # 验证补丁生效, 没打上就报错终止, 不白编两小时
+          grep -rn -A3 "GetPreferredLayout" onnxruntime/core/providers/qnn/*.h onnxruntime/core/providers/qnn/*.cc | grep -B1 -A3 "NCHW" || \
+            { echo "::error::补丁没打上, 把上面的 grep 输出贴出来"; exit 1; }
+
       - name: 配置 Java 环境
         uses: actions/setup-java@v4
         with:
@@ -55,7 +67,7 @@ jobs:
             --android \
             --android_abi arm64-v8a \
             --android_api 34 \
-            --use_qnn \                      # 去掉 static_lib
+            --use_qnn \
             --qnn_home $GITHUB_WORKSPACE/qnn-sdk/qairt/2.48.0.260626 \
             --build_shared_lib \
             --parallel \
