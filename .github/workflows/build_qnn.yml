@@ -10,7 +10,7 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 打补丁: 布局偏好 NHWC -> NCHW (修 QDQ 编译被布局变换改废的 bug)
+      - name: "打补丁: 布局偏好 NHWC 改 NCHW (修 QDQ 编译被布局变换改废的 bug)"
         run: |
           # 定位 GetPreferredLayout 的实现 (可能在 .cc 或 .h)
           grep -rn "GetPreferredLayout" onnxruntime/core/providers/qnn/ || true
@@ -38,14 +38,14 @@ jobs:
         run: |
           mkdir -p $GITHUB_WORKSPACE/android-sdk
           export ANDROID_SDK_ROOT=$GITHUB_WORKSPACE/android-sdk
-          
+
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           unzip -q commandlinetools-linux-11076708_latest.zip -d $ANDROID_SDK_ROOT/cmdline-tools
           mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
-          
+
           echo "正在下载 NDK 25..."
           $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install "ndk;25.2.9519653" --channel=0
-          
+
           echo "ANDROID_NDK_25=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> $GITHUB_ENV
 
       - name: 下载 QNN SDK
@@ -58,11 +58,10 @@ jobs:
           echo "QNN SDK 路径："
           ls -d $GITHUB_WORKSPACE/qnn-sdk/qairt/2.48.0.260626
 
-      # ============== 核心编译步骤（已优化） ==============
       - name: 编译 Shared Lib (NDK 25, API 34)
         run: |
           export ANDROID_NDK=$ANDROID_NDK_25
-          
+
           ./build.sh --config Release \
             --android \
             --android_abi arm64-v8a \
@@ -78,7 +77,6 @@ jobs:
 
           mv build/Android/Release $GITHUB_WORKSPACE/Release_Shared
 
-      # ============== 上传产物 ==============
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
