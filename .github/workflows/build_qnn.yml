@@ -62,11 +62,14 @@ jobs:
         run: |
           export ANDROID_NDK=$ANDROID_NDK_25
 
+          # --use_qnn static_lib: 新版 build.py 强制要求 Android+QNN
+          # 的 QNN EP 编成静态库 (编进 libonnxruntime.so 内部),
+          # 不带值会默认 shared_lib 直接报 ERROR 退出
           ./build.sh --config Release \
             --android \
             --android_abi arm64-v8a \
             --android_api 34 \
-            --use_qnn \
+            --use_qnn static_lib \
             --qnn_home $GITHUB_WORKSPACE/qnn-sdk/qairt/2.48.0.260626 \
             --build_shared_lib \
             --parallel \
