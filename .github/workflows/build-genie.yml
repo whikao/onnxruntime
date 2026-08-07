@@ -1,0 +1,90 @@
+name: Package QNN Genie Runtime (QAIRT 2.48, aarch64-android)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package-genie:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: 安装工具
+        run: |
+          sudo apt update
+          sudo apt install -y python3-pip zip
+          pip install gdown
+
+      - name: 下载 QNN SDK (同 build_qnn.yml 的镜像源, 无需高通账号)
+        run: |
+          gdown 1mWBqYnpVw5coBF7x5ZTFxf93z0ERwE8H -O qnn-sdk.zip
+          unzip -q qnn-sdk.zip -d $GITHUB_WORKSPACE/qnn-sdk
+
+      - name: 定位并检查 SDK
+        run: |
+          SDK=$(ls -d $GITHUB_WORKSPACE/qnn-sdk/qairt/*/)
+          echo "SDK=$SDK" >> $GITHUB_ENV
+          echo "SDK 根目录: $SDK"
+          ls "$SDK/bin/aarch64-android/" | head -20
+          test -f "$SDK/bin/aarch64-android/genie-t2t-run" || { echo "::error::未找到 genie-t2t-run"; exit 1; }
+          test -f "$SDK/lib/aarch64-android/libGenie.so" || { echo "::error::未找到 libGenie.so"; exit 1; }
+
+      - name: 抽取 Genie 运行所需文件
+        run: |
+          OUT=$GITHUB_WORKSPACE/genie-android-arm64
+          mkdir -p $OUT
+          # Genie CLI 二进制
+          cp "$SDK/bin/aarch64-android/genie-t2t-run" $OUT/
+          # Android 侧全部 QNN/Genie 动态库 (HTP stub/CPU/saver/system 等)
+          cp "$SDK/lib/aarch64-android/"*.so $OUT/
+          # DSP 侧 skel 库 (v73/v75/v79/v81 全带, SM8850 用 v81, 体积不大全打包省事)
+          for v in v73 v75 v79 v81; do
+            if [ -d "$SDK/lib/hexagon-$v/unsigned" ]; then
+              cp "$SDK/lib/hexagon-$v/unsigned/"*.so $OUT/ 2>/dev/null || true
+            fi
+          done
+          echo "=== 打包内容 ==="
+          ls -la $OUT/
+
+      - name: 附 Termux 运行脚本
+        run: |
+          OUT=$GITHUB_WORKSPACE/genie-android-arm64
+          cat > $OUT/run.sh << 'EOF'
+          #!/bin/bash
+          # 用法: cd 到本目录后  ./run.sh "你的提示词"
+          # 模型已放在 /sdcard/lllmbin (含 genie_config.json 的目录)
+          cd "$(dirname "$0")"
+          export LD_LIBRARY_PATH=.:/vendor/lib64:/system/lib64
+          export ADSP_LIBRARY_PATH=.
+          MODEL_DIR="${GENIE_MODEL:-/sdcard/lllmbin}"
+          # 自动找模型目录里的 genie_config.json (可能在子目录)
+          CFG=$(find "$MODEL_DIR" -maxdepth 2 -name "genie_config.json" | head -n 1)
+          if [ -z "$CFG" ]; then echo "ERROR: $MODEL_DIR 下没找到 genie_config.json"; exit 1; fi
+          echo "使用配置: $CFG"
+          PROMPT="${1:-介绍一下广州}"
+          ./genie-t2t-run -c "$CFG" -p "$PROMPT"
+          EOF
+          sed -i 's/^  *//' $OUT/run.sh
+          chmod +x $OUT/run.sh
+
+      - name: 打包 zip
+        run: |
+          cd $GITHUB_WORKSPACE
+          zip -q -r genie-android-arm64.zip genie-android-arm64
+          ls -lh genie-android-arm64.zip
+
+      - name: 上传产物 (Actions artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: genie-android-arm64
+          path: genie-android-arm64.zip
+
+      - name: 发布 Release (手机浏览器可直接下载)
+        run: |
+          TAG="genie-$(date +%Y%m%d-%H%M)"
+          gh release create "$TAG" genie-android-arm64.zip \
+            --title "QNN Genie Runtime $TAG" \
+            --notes "Termux 用法: 解压后 cd 进目录, ./run.sh \"提示词\" (模型目录默认 /sdcard/lllmbin, 可用 GENIE_MODEL 环境变量改)"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
