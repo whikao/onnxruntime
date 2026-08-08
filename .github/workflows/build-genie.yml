@@ -60,6 +60,15 @@ jobs:
           EOF
           sed -i 's/^  *//' $OUT/run.sh
           chmod +x $OUT/run.sh
+          
+      - name: 打印官方示例配置
+        run: |
+          CFGDIR=$(find /home/runner/work -type d -name configs -path "*Genie*" | head -1)
+          find "$CFGDIR" -name "*.json" | sort
+          for f in "$CFGDIR"/llama3-3b/*.json "$CFGDIR"/*standalone*.json "$CFGDIR"/*eaglet*.json; do
+            [ -f "$f" ] && { echo "===== $f"; cat "$f"; echo; }
+          done
+
 
       - name: 打包 zip
         run: |
